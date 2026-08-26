@@ -3,3 +3,4 @@ build/
 *.nds
 *.rom
 *.sav
+.idea
