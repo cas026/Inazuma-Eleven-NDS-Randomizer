@@ -43,6 +43,8 @@ class NitroFnt(private val fnt: ByteArray) {
         }
     }
 
+    fun hasFile(path: String): Boolean = pathToId.containsKey(path)
+
     fun fileId(path: String): Int =
         pathToId[path] ?: error("File not found in ROM filesystem: $path")
 

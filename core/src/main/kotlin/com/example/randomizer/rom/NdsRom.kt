@@ -20,8 +20,21 @@ class NdsRom(path: Path) {
 
     fun listFiles(): List<String> = fnt.listFiles()
 
+    fun hasFile(path: String): Boolean = fnt.hasFile(path)
+
     fun getFile(path: String): ByteArray {
         val range = fat.range(fnt.fileId(path))
         return bytes.copyOfRange(range.first, range.last + 1)
+    }
+
+    fun patchFile(path: String, newData: ByteArray): ByteArray {
+        val range = fat.range(fnt.fileId(path))
+        val size  = range.last - range.first + 1
+        require(newData.size == size) {
+            "Patch size mismatch for '$path': expected $size bytes, got ${newData.size}"
+        }
+        val result = bytes.copyOf()
+        newData.copyInto(result, destinationOffset = range.first)
+        return result
     }
 }

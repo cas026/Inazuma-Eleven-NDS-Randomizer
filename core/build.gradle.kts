@@ -25,3 +25,10 @@ tasks.register<JavaExec>("dumpStats") {
     classpath = sourceSets["main"].runtimeClasspath
     mainClass = "com.example.randomizer.dump.StatDumpKt"
 }
+
+tasks.register<JavaExec>("randomize") {
+    group = "verification"
+    description = "Randomizes player stats and writes a patched ROM. Usage: ./gradlew :core:randomize --args=\"<input.nds> <output.nds> [seed] [variance]\""
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass = "com.example.randomizer.randomizer.RandomizeCliKt"
+}
