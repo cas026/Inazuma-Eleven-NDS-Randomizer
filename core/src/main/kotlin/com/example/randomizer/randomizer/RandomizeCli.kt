@@ -3,6 +3,7 @@ package com.example.randomizer.randomizer
 import com.example.randomizer.data.GameVersion
 import com.example.randomizer.data.UnitStatParser
 import com.example.randomizer.data.UnitStatSerializer
+import com.example.randomizer.data.resolveGameFilePath
 import com.example.randomizer.rom.NdsRom
 import kotlin.io.path.Path
 import kotlin.io.path.writeBytes
@@ -26,7 +27,7 @@ fun main(args: Array<String>) {
     val version = GameVersion.fromGameId(rom.gameId)
         ?: error("Unknown game ID '${rom.gameId}'. Supported: ${GameVersion.entries.map { it.gameId }}")
 
-    val statPath   = resolveFilePath(rom, version, "unitstat.dat")
+    val statPath   = resolveGameFilePath(rom, version, "unitstat.dat")
     val statData   = rom.getFile(statPath)
     val stats      = UnitStatParser(version).parse(statData)
     val storyCount = StoryPlayers.byVersion[version]?.size ?: 0
@@ -46,10 +47,3 @@ fun main(args: Array<String>) {
     println("Output:   $outputPath")
 }
 
-internal fun resolveFilePath(rom: NdsRom, version: GameVersion, filename: String): String {
-    if (version == GameVersion.IE2_EN) {
-        val enPath = "data_iz/logic/en/$filename"
-        return if (rom.hasFile(enPath)) enPath else "data_iz/logic/sp/$filename"
-    }
-    return version.dataPath + filename
-}
