@@ -27,13 +27,18 @@ class NdsRom(path: Path) {
         return bytes.copyOfRange(range.first, range.last + 1)
     }
 
-    fun patchFile(path: String, newData: ByteArray): ByteArray {
+    fun patchFile(path: String, newData: ByteArray): ByteArray =
+        patchFile(path, newData, bytes)
+
+    // Patches [base] instead of the original ROM bytes, allowing multiple patches to be
+    // chained: pass the result of a previous patchFile call as [base].
+    fun patchFile(path: String, newData: ByteArray, base: ByteArray): ByteArray {
         val range = fat.range(fnt.fileId(path))
         val size  = range.last - range.first + 1
         require(newData.size == size) {
             "Patch size mismatch for '$path': expected $size bytes, got ${newData.size}"
         }
-        val result = bytes.copyOf()
+        val result = base.copyOf()
         newData.copyInto(result, destinationOffset = range.first)
         return result
     }

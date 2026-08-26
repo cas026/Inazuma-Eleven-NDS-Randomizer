@@ -63,7 +63,7 @@ class StatRandomizer(
     // Scale min and max independently, then sort — preserves original magnitude while
     // guaranteeing min ≤ max without biasing one value toward the other.
     private fun scaledGrowth(g: StatGrowth, isUint8: Boolean, variance: Double): StatGrowth {
-        val upper = if (isUint8) 255 else 9999
+        val upper = if (isUint8) 150 else 9999
         val rawA  = scaleValue(g.min,        variance, 1, upper)
         val rawB  = scaleValue(g.max,        variance, 1, upper)
         val rate  = scaleValue(g.growthRate, variance, 1, Short.MAX_VALUE.toInt())
