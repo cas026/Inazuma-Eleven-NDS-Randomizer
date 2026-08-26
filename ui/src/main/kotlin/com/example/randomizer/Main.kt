@@ -21,10 +21,10 @@ fun main(args: Array<String>) = Application.launch(App::class.java, *args)
 class App : Application() {
     override fun start(stage: Stage) {
         val ui = RandomizerUi(stage)
-        stage.scene = Scene(ui.root, 700.0, 520.0)
+        stage.scene = Scene(ui.root, 700.0, 560.0)
         stage.title = "Inazuma Eleven NDS Randomizer"
         stage.minWidth = 500.0
-        stage.minHeight = 420.0
+        stage.minHeight = 460.0
         stage.show()
     }
 }
@@ -38,7 +38,17 @@ class RandomizerUi(private val stage: Stage) {
     }
     private val browseButton   = Button("Bladeren…")
     private val seedField      = TextField().apply { promptText = "willekeurig"; prefWidth = 200.0 }
-    private val statsCheckBox  = CheckBox("Randomize stats  (±35% voor gewone spelers, ±15% voor story-spelers)")
+
+    private val statsToggle    = ToggleGroup()
+    private val notChangedBtn  = RadioButton("Not Changed").apply { toggleGroup = statsToggle; isSelected = true }
+    private val shuffleBtn     = RadioButton("Shuffle").apply { toggleGroup = statsToggle }
+    private val randomBtn      = RadioButton("Random (Totally)").apply { toggleGroup = statsToggle }
+
+    private val variationField = TextField("0").apply {
+        prefWidth = 55.0
+        isDisable = true
+    }
+
     private val generateButton = Button("Genereer ROM").apply { maxWidth = Double.MAX_VALUE }
     private val logArea        = TextArea().apply {
         isEditable = false
@@ -50,14 +60,24 @@ class RandomizerUi(private val stage: Stage) {
     val root: VBox = buildLayout()
 
     init {
-        statsCheckBox.isSelected = true
         browseButton.setOnAction   { pickRom() }
         generateButton.setOnAction { generate() }
+        statsToggle.selectedToggleProperty().addListener { _, _, selected ->
+            when (selected) {
+                notChangedBtn -> variationField.isDisable = true
+                shuffleBtn    -> { variationField.isDisable = false; variationField.text = "0" }
+                randomBtn     -> { variationField.isDisable = false; variationField.text = "35" }
+            }
+        }
     }
 
     private fun buildLayout(): VBox {
-        val romRow = HBox(8.0, romPathField, browseButton).apply { alignment = Pos.CENTER_LEFT }
-        val seedRow = HBox(8.0, Label("Seed:"), seedField).apply { alignment = Pos.CENTER_LEFT }
+        val romRow       = HBox(8.0, romPathField, browseButton).apply { alignment = Pos.CENTER_LEFT }
+        val seedRow      = HBox(8.0, Label("Seed:"), seedField).apply { alignment = Pos.CENTER_LEFT }
+        val statsRow     = HBox(12.0, Label("Stats:"), notChangedBtn, shuffleBtn, randomBtn)
+            .apply { alignment = Pos.CENTER_LEFT }
+        val variationRow = HBox(8.0, Label("Variation %:"), variationField, Label("(0–99, aanbevolen ≤ 50)"))
+            .apply { alignment = Pos.CENTER_LEFT }
 
         return VBox(10.0).apply {
             padding = Insets(16.0)
@@ -65,7 +85,8 @@ class RandomizerUi(private val stage: Stage) {
                 Label("ROM-bestand:"),
                 romRow,
                 seedRow,
-                statsCheckBox,
+                statsRow,
+                variationRow,
                 generateButton,
                 Separator(),
                 Label("Log:"),
@@ -82,13 +103,21 @@ class RandomizerUi(private val stage: Stage) {
         chooser.showOpenDialog(stage)?.let { romPathField.text = it.absolutePath }
     }
 
+    private fun selectedMode(): StatMode = when (statsToggle.selectedToggle) {
+        shuffleBtn -> StatMode.SHUFFLE
+        randomBtn  -> StatMode.RANDOM_TOTALLY
+        else       -> StatMode.NOT_CHANGED
+    }
+
     private fun generate() {
-        val romPath = romPathField.text.ifBlank { return log("Kies eerst een ROM-bestand.") }
-        val seed    = seedField.text.toLongOrNull() ?: System.currentTimeMillis()
+        val romPath  = romPathField.text.ifBlank { return log("Kies eerst een ROM-bestand.") }
+        val seed     = seedField.text.toLongOrNull() ?: System.currentTimeMillis()
+        val mode     = selectedMode()
+        val variance = variationField.text.toIntOrNull()?.coerceIn(0, 99)?.div(100.0) ?: 0.35
 
         generateButton.isDisable = true
         logArea.clear()
-        log("Seed: $seed")
+        log("Seed: $seed  |  Modus: $mode  |  Variation: ±${(variance * 100).toInt()}%")
 
         Thread {
             try {
@@ -97,19 +126,21 @@ class RandomizerUi(private val stage: Stage) {
                     ?: error("Onbekende game ID '${rom.gameId}'")
                 log("ROM: ${rom.title}  (${rom.gameId} — $version)")
 
-                if (!statsCheckBox.isSelected) {
-                    log("Niets geselecteerd om te randomizen.")
-                    return@Thread
-                }
-
                 val statPath   = resolveGameFilePath(rom, version, "unitstat.dat")
                 val statData   = rom.getFile(statPath)
                 val stats      = UnitStatParser(version).parse(statData)
-                val config     = RandomizerConfig(seed = seed)
+                val config     = RandomizerConfig(seed = seed, statMode = mode, variance = variance)
                 val randomized = StatRandomizer(config, version).randomize(stats)
-                val storyCount = StoryPlayers.byVersion[version]?.size ?: 0
-                val realCount  = stats.count { it.maxTotal > 0 }
-                log("$realCount spelers gerandomized  ($storyCount story ±${(config.storyVariance * 100).toInt()}%, overige ±${(config.variance * 100).toInt()}%)")
+
+                when (mode) {
+                    StatMode.NOT_CHANGED -> log("Stats: ongemoeid gelaten.")
+                    else -> {
+                        val storyCount         = StoryPlayers.byVersion[version]?.size ?: 0
+                        val realCount          = stats.count { it.maxTotal > 0 }
+                        val effectiveStoryVar  = minOf(config.storyVariance, variance)
+                        log("$realCount spelers verwerkt  ($storyCount story ±${(effectiveStoryVar * 100).toInt()}%, overige ±${(variance * 100).toInt()}%)")
+                    }
+                }
 
                 val newStatData = UnitStatSerializer(version).serialize(statData, randomized)
                 val patchedRom  = rom.patchFile(statPath, newStatData)

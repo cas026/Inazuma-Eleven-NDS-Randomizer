@@ -11,9 +11,10 @@ import kotlin.io.path.writeBytes
 fun main(args: Array<String>) {
     if (args.size < 2) {
         System.err.println(
-            "Usage: ./gradlew :core:randomize --args=\"<input.nds> <output.nds> [seed] [variance]\"\n" +
+            "Usage: ./gradlew :core:randomize --args=\"<input.nds> <output.nds> [seed] [variance] [mode]\"\n" +
             "  seed     — integer, omit for a random seed\n" +
-            "  variance — decimal 0.0–1.0, default 0.35 (±35%)"
+            "  variance — decimal 0.0–0.99, default 0.35 (±35%)\n" +
+            "  mode     — NOT_CHANGED | SHUFFLE | RANDOM_TOTALLY  (default: RANDOM_TOTALLY)"
         )
         return
     }
@@ -22,6 +23,10 @@ fun main(args: Array<String>) {
     val outputPath = Path(args[1])
     val seed       = args.getOrNull(2)?.toLong() ?: System.currentTimeMillis()
     val variance   = args.getOrNull(3)?.toDouble() ?: 0.35
+    val mode       = args.getOrNull(4)
+        ?.uppercase()
+        ?.let { name -> StatMode.entries.find { it.name == name } }
+        ?: StatMode.RANDOM_TOTALLY
 
     val rom     = NdsRom(inputPath)
     val version = GameVersion.fromGameId(rom.gameId)
@@ -33,7 +38,7 @@ fun main(args: Array<String>) {
     val storyCount = StoryPlayers.byVersion[version]?.size ?: 0
     val realCount  = stats.count { it.maxTotal > 0 }
 
-    val config     = RandomizerConfig(seed = seed, variance = variance)
+    val config     = RandomizerConfig(seed = seed, statMode = mode, variance = variance)
     val randomized = StatRandomizer(config, version).randomize(stats)
 
     val newStatData = UnitStatSerializer(version).serialize(statData, randomized)
@@ -42,8 +47,8 @@ fun main(args: Array<String>) {
 
     println("ROM:      ${rom.title} (${rom.gameId}, $version)")
     println("Seed:     $seed")
+    println("Mode:     $mode")
     println("Variance: ±${(variance * 100).toInt()}% regular / ±${(config.storyVariance * 100).toInt()}% story")
     println("Players:  $realCount total, $storyCount with reduced variance (story)")
     println("Output:   $outputPath")
 }
-
