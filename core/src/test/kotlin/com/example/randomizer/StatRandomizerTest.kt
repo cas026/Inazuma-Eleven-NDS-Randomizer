@@ -8,7 +8,7 @@ import kotlin.test.*
 
 class StatRandomizerTest {
 
-    private val version = GameVersion.IE1_EUR_EN
+    private val version = GameVersion.IE1_EN
     private val config  = RandomizerConfig(seed = 42L, statMode = StatMode.RANDOM_TOTALLY)
 
     private val realStat = UnitStat(

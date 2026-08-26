@@ -53,13 +53,8 @@ class RoundtripTest {
         GameVersion.fromGameId(rom.gameId)
             ?: error("Unsupported game ID '${rom.gameId}'. Supported: ${GameVersion.entries.map { it.gameId }}")
 
-    private fun loadFile(rom: NdsRom, version: GameVersion, filename: String): ByteArray {
-        if (version == GameVersion.IE2_EN) {
-            return try { rom.getFile("data_iz/logic/en/$filename") }
-                   catch (_: Exception) { rom.getFile("data_iz/logic/sp/$filename") }
-        }
-        return rom.getFile(version.dataPath + filename)
-    }
+    private fun loadFile(rom: NdsRom, version: GameVersion, filename: String): ByteArray =
+        rom.getFile(version.dataPath + filename)
 
     /** Shows the first differing byte offset and its values for quick diagnosis. */
     private fun buildDiffMessage(expected: ByteArray, actual: ByteArray): String {

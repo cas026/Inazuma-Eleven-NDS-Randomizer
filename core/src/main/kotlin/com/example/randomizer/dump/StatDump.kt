@@ -28,13 +28,8 @@ fun main(args: Array<String>) {
     players.forEach { i -> printPlayer(i + 1, bases[i], stats[i]) }
 }
 
-private fun loadFile(rom: NdsRom, version: GameVersion, filename: String): ByteArray {
-    if (version == GameVersion.IE2_EN) {
-        return try { rom.getFile("data_iz/logic/en/$filename") }
-               catch (_: Exception) { rom.getFile("data_iz/logic/sp/$filename") }
-    }
-    return rom.getFile(version.dataPath + filename)
-}
+private fun loadFile(rom: NdsRom, version: GameVersion, filename: String): ByteArray =
+    rom.getFile(version.dataPath + filename)
 
 private fun printPlayer(index: Int, base: UnitBase, stat: UnitStat) {
     val w = { n: Int, width: Int -> n.toString().padStart(width) }
