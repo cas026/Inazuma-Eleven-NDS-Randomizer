@@ -6,5 +6,6 @@ data class RandomizerConfig(
     val variance: Double = 0.35,
     val storyVariance: Double = 0.15,
     val elementMode: FieldMode = FieldMode.NOT_CHANGED,
-    val genderMode: FieldMode = FieldMode.NOT_CHANGED
+    val genderMode: FieldMode = FieldMode.NOT_CHANGED,
+    val positionMode: PositionMode = PositionMode.NOT_CHANGED
 )

@@ -13,26 +13,29 @@ import kotlin.io.path.writeBytes
 fun main(args: Array<String>) {
     if (args.size < 2) {
         System.err.println(
-            "Usage: ./gradlew :core:randomize --args=\"<input.nds> <output.nds> [seed] [variance] [statMode] [elementMode] [genderMode]\"\n" +
-            "  seed        — integer, omit for a random seed\n" +
-            "  variance    — decimal 0.0–0.99, default 0.35 (±35%)\n" +
-            "  statMode    — NOT_CHANGED | SHUFFLE | RANDOM_TOTALLY  (default: RANDOM_TOTALLY)\n" +
-            "  elementMode — NOT_CHANGED | REVERSE | RANDOM_TOTALLY  (default: NOT_CHANGED)\n" +
-            "  genderMode  — NOT_CHANGED | REVERSE | RANDOM_TOTALLY  (default: NOT_CHANGED)"
+            "Usage: ./gradlew :core:randomize --args=\"<input.nds> <output.nds> [seed] [variance] [statMode] [elementMode] [genderMode] [positionMode]\"\n" +
+            "  seed         — integer, omit for a random seed\n" +
+            "  variance     — decimal 0.0–1.5, default 0.35 (±35%)\n" +
+            "  statMode     — NOT_CHANGED | SHUFFLE | RANDOM_TOTALLY  (default: RANDOM_TOTALLY)\n" +
+            "  elementMode  — NOT_CHANGED | REVERSE | RANDOM_TOTALLY  (default: NOT_CHANGED)\n" +
+            "  genderMode   — NOT_CHANGED | REVERSE | RANDOM_TOTALLY  (default: NOT_CHANGED)\n" +
+            "  positionMode — NOT_CHANGED | SHUFFLE | RANDOM_TOTALLY  (default: NOT_CHANGED)"
         )
         return
     }
 
-    val inputPath   = Path(args[0])
-    val outputPath  = Path(args[1])
-    val seed        = args.getOrNull(2)?.toLong() ?: System.currentTimeMillis()
-    val variance    = args.getOrNull(3)?.toDouble() ?: 0.35
-    val statMode    = args.getOrNull(4)?.uppercase()
+    val inputPath    = Path(args[0])
+    val outputPath   = Path(args[1])
+    val seed         = args.getOrNull(2)?.toLong() ?: System.currentTimeMillis()
+    val variance     = args.getOrNull(3)?.toDouble() ?: 0.35
+    val statMode     = args.getOrNull(4)?.uppercase()
         ?.let { name -> StatMode.entries.find { it.name == name } } ?: StatMode.RANDOM_TOTALLY
-    val elementMode = args.getOrNull(5)?.uppercase()
+    val elementMode  = args.getOrNull(5)?.uppercase()
         ?.let { name -> FieldMode.entries.find { it.name == name } } ?: FieldMode.NOT_CHANGED
-    val genderMode  = args.getOrNull(6)?.uppercase()
+    val genderMode   = args.getOrNull(6)?.uppercase()
         ?.let { name -> FieldMode.entries.find { it.name == name } } ?: FieldMode.NOT_CHANGED
+    val positionMode = args.getOrNull(7)?.uppercase()
+        ?.let { name -> PositionMode.entries.find { it.name == name } } ?: PositionMode.NOT_CHANGED
 
     val rom     = NdsRom(inputPath)
     val version = GameVersion.fromGameId(rom.gameId)
@@ -40,7 +43,8 @@ fun main(args: Array<String>) {
 
     val config = RandomizerConfig(
         seed = seed, statMode = statMode, variance = variance,
-        elementMode = elementMode, genderMode = genderMode
+        elementMode = elementMode, genderMode = genderMode,
+        positionMode = positionMode
     )
 
     // — Stats —
@@ -51,11 +55,13 @@ fun main(args: Array<String>) {
     val realCount   = stats.count { it.maxTotal > 0 }
     val newStatData = UnitStatSerializer(version).serialize(statData, StatRandomizer(config, version).randomize(stats))
 
-    // — Element / Gender —
+    // — Element / Gender / Position —
     val basePath    = resolveGameFilePath(rom, version, "unitbase.dat")
     val baseData    = rom.getFile(basePath)
     val players     = UnitBaseParser(version).parse(baseData)
-    val newBaseData = UnitBaseSerializer(version).serialize(baseData, ElementGenderRandomizer(config).randomize(players))
+    val randomizedPlayers = PositionRandomizer(config)
+        .randomize(ElementGenderRandomizer(config).randomize(players))
+    val newBaseData = UnitBaseSerializer(version).serialize(baseData, randomizedPlayers)
 
     // Apply both patches — chain so second patch builds on top of first.
     val patchedRom = rom.patchFile(basePath, newBaseData, rom.patchFile(statPath, newStatData))
@@ -66,5 +72,6 @@ fun main(args: Array<String>) {
     println("Stats:    $statMode  variance=±${(variance * 100).toInt()}% regular / ±${(config.storyVariance * 100).toInt()}% story  players=$realCount ($storyCount story)")
     println("Element:  $elementMode")
     println("Gender:   $genderMode")
+    println("Position: $positionMode")
     println("Output:   $outputPath")
 }

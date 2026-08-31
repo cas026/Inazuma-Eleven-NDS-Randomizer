@@ -74,6 +74,11 @@ class RandomizerUi(private val stage: Stage) {
     private val genderRevBtn  = RadioButton("Reverse").apply          { toggleGroup = genderToggle }
     private val genderRndBtn  = RadioButton("Random (Totally)").apply { toggleGroup = genderToggle }
 
+    private val positionToggle  = ToggleGroup()
+    private val posNcBtn        = RadioButton("Not Changed").apply      { toggleGroup = positionToggle; isSelected = true }
+    private val posRevBtn       = RadioButton("Reverse").apply          { toggleGroup = positionToggle }
+    private val posRndBtn       = RadioButton("Random (Totally)").apply { toggleGroup = positionToggle }
+
     val root: VBox = buildLayout()
 
     init {
@@ -130,14 +135,16 @@ class RandomizerUi(private val stage: Stage) {
             .apply { alignment = Pos.CENTER_LEFT }
         val variationRow = HBox(8.0, Label("Variation %:"), variationField, Label("(1–150, recommended ≤ 50)"))
             .apply { alignment = Pos.CENTER_LEFT; padding = Insets(0.0, 0.0, 0.0, labelWidth + 12.0) }
-        val elementRow   = HBox(12.0, rowLabel("Element:"), elemNcBtn, elemRevBtn, elemRndBtn)
+        val elementRow   = HBox(12.0, rowLabel("Element:"),  elemNcBtn,  elemRevBtn,  elemRndBtn)
             .apply { alignment = Pos.CENTER_LEFT }
-        val genderRow    = HBox(12.0, rowLabel("Gender:"), genderNcBtn, genderRevBtn, genderRndBtn)
+        val genderRow    = HBox(12.0, rowLabel("Gender:"),   genderNcBtn, genderRevBtn, genderRndBtn)
+            .apply { alignment = Pos.CENTER_LEFT }
+        val positionRow  = HBox(12.0, rowLabel("Position:"), posNcBtn, posRevBtn, posRndBtn)
             .apply { alignment = Pos.CENTER_LEFT }
 
         val playerContent = VBox(10.0).apply {
             padding = Insets(16.0)
-            children.addAll(statsRow, variationRow, elementRow, genderRow)
+            children.addAll(statsRow, variationRow, elementRow, genderRow, positionRow)
         }
 
         val tabPane = TabPane().apply {
@@ -195,11 +202,18 @@ class RandomizerUi(private val stage: Stage) {
         else         -> FieldMode.NOT_CHANGED
     }
 
+    private fun selectedPositionMode(): PositionMode = when (positionToggle.selectedToggle) {
+        posRevBtn -> PositionMode.REVERSE
+        posRndBtn -> PositionMode.RANDOM_TOTALLY
+        else      -> PositionMode.NOT_CHANGED
+    }
+
     private fun generate() {
         val seed        = seedField.text.toLongOrNull() ?: System.currentTimeMillis()
-        val statMode    = selectedStatMode()
-        val elementMode = selectedElementMode()
-        val genderMode  = selectedGenderMode()
+        val statMode     = selectedStatMode()
+        val elementMode  = selectedElementMode()
+        val genderMode   = selectedGenderMode()
+        val positionMode = selectedPositionMode()
         val variance    = variationField.text.toIntOrNull()?.coerceIn(0, 150)?.div(100.0) ?: 0.35
 
         generateButton.isDisable = true
@@ -215,7 +229,8 @@ class RandomizerUi(private val stage: Stage) {
 
                 val config = RandomizerConfig(
                     seed = seed, statMode = statMode, variance = variance,
-                    elementMode = elementMode, genderMode = genderMode
+                    elementMode = elementMode, genderMode = genderMode,
+                    positionMode = positionMode
                 )
 
                 // — Stats —
@@ -238,13 +253,14 @@ class RandomizerUi(private val stage: Stage) {
                 // — Element / Gender —
                 val basePath    = resolveGameFilePath(rom, version, "unitbase.dat")
                 val baseData    = rom.getFile(basePath)
-                val players     = UnitBaseParser(version).parse(baseData)
-                val newBaseData = UnitBaseSerializer(version).serialize(
-                    baseData, ElementGenderRandomizer(config).randomize(players)
-                )
+                val players = UnitBaseParser(version).parse(baseData)
+                val randomizedPlayers = PositionRandomizer(config)
+                    .randomize(ElementGenderRandomizer(config).randomize(players))
+                val newBaseData = UnitBaseSerializer(version).serialize(baseData, randomizedPlayers)
 
-                if (elementMode != FieldMode.NOT_CHANGED) log("Element: $elementMode")
-                if (genderMode  != FieldMode.NOT_CHANGED) log("Gender:  $genderMode")
+                if (elementMode  != FieldMode.NOT_CHANGED)   log("Element:  $elementMode")
+                if (genderMode   != FieldMode.NOT_CHANGED)   log("Gender:   $genderMode")
+                if (positionMode != PositionMode.NOT_CHANGED) log("Position: $positionMode")
 
                 // Chain patches: unitbase on top of stat patch.
                 val patchedRom = rom.patchFile(basePath, newBaseData, rom.patchFile(statPath, newStatData))
