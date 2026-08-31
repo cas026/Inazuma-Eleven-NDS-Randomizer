@@ -32,12 +32,35 @@ class ModelRandomizer(private val config: RandomizerConfig, private val version:
         fun poolFor(size: Int): List<UnitBase> = poolBySize[size]?.takeIf { it.isNotEmpty() } ?: globalFallback
 
         if (config.matchModelAndName && config.nameMode == NameMode.RANDOM_TOTALLY) {
-            // Mirror the exact same shuffle that NameRandomizer uses so model and name travel together.
-            val shuffled = playableIndices.shuffled(Random(config.seed))
-            playableIndices.forEachIndexed { i, dstIdx ->
-                val src = players[shuffled[i]]
-                val model = if (isValidModel(src)) src else poolFor(players[dstIdx].size)[rng.nextInt(poolFor(players[dstIdx].size).size)]
-                result[dstIdx] = result[dstIdx].copyModel(model)
+            // NameRandomizer is skipped in this mode; ModelRandomizer assigns both name and model.
+            // IE1 players get a 1-to-1 permutation within their size group.
+            // IE2 players (when onlyIe1=true) draw from the IE1 pool so they are also randomized.
+            val permSourceIndices = if (config.onlyIe1Characters)
+                playableIndices.filter { it < IE1_RECORD_BOUNDARY }
+            else
+                playableIndices
+
+            // Build permutation: dstIdx → source player, per size group.
+            val permSrc = mutableMapOf<Int, UnitBase>()
+            permSourceIndices.groupBy { players[it].size }.forEach { (_, indices) ->
+                val shuffled = indices.shuffled(Random(config.seed))
+                indices.forEachIndexed { i, dstIdx -> permSrc[dstIdx] = players[shuffled[i]] }
+            }
+
+            // Apply to ALL playable players; IE2 destinations fall back to IE1 pool.
+            playableIndices.forEach { dstIdx ->
+                val src = permSrc[dstIdx]
+                    ?: poolFor(players[dstIdx].size).let { it[rng.nextInt(it.size)] }
+                result[dstIdx] = result[dstIdx].copy(
+                    fullName    = src.fullName,
+                    nickname    = src.nickname,
+                    modelData   = src.modelData,
+                    spriteSpecs = src.spriteSpecs,
+                    rpgHead     = src.rpgHead,
+                    rpgPalette  = src.rpgPalette,
+                    modelSpecs  = src.modelSpecs,
+                    skinTone    = src.skinTone
+                )
             }
         } else {
             playableIndices.forEach { dstIdx ->

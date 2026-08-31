@@ -9,6 +9,8 @@ class NameRandomizer(private val config: RandomizerConfig) {
 
     fun randomize(players: List<UnitBase>): List<UnitBase> {
         if (config.nameMode == NameMode.NOT_CHANGED) return players
+        // ModelRandomizer handles both name and model together in matchModelAndName mode.
+        if (config.matchModelAndName && config.modelMode != ModelMode.NOT_CHANGED) return players
 
         // Collect (fullName, nickname) pairs from playable players only.
         // NPC records (genderId == 0 or blank name) are excluded from the pool
