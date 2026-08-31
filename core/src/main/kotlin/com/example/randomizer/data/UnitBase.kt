@@ -6,7 +6,14 @@ data class UnitBase(
     val elementId: Int,
     val genderId: Int,
     val size: Int,
-    val position: Int
+    val position: Int,
+    // Six model fields copied as a group — all must come from the same source record to stay consistent.
+    val modelData:   Int = 0,
+    val spriteSpecs: Int = 0,
+    val rpgHead:     Int = 0,
+    val rpgPalette:  Int = 0,
+    val modelSpecs:  Int = 0,
+    val skinTone:    Int = 0
 ) {
     val element: Element?  get() = Element.fromId(elementId)
     val gender: Gender?    get() = Gender.fromId(genderId)

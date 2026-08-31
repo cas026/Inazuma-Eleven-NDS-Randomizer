@@ -83,11 +83,30 @@ class RandomizerUi(private val stage: Stage) {
     private val nameNcBtn  = RadioButton("Not Changed").apply      { toggleGroup = nameToggle; isSelected = true }
     private val nameRndBtn = RadioButton("Random (Totally)").apply { toggleGroup = nameToggle }
 
+    private val modelToggle = ToggleGroup()
+    private val modelNcBtn  = RadioButton("Not Changed").apply      { toggleGroup = modelToggle; isSelected = true }
+    private val modelRndBtn = RadioButton("Random (Totally)").apply { toggleGroup = modelToggle }
+    private val matchModelNameBox  = CheckBox("Match model and name").apply { isDisable = true }
+    private val onlyIe1Box         = CheckBox("Only IE1 characters").apply  { isDisable = true }
+
     val root: VBox = buildLayout()
 
     init {
         openRomButton.setOnAction  { pickRom() }
         generateButton.setOnAction { generate() }
+        modelToggle.selectedToggleProperty().addListener { _, _, selected ->
+            val random = selected == modelRndBtn
+            matchModelNameBox.isDisable = !random
+            onlyIe1Box.isDisable        = !random
+            if (!random) { matchModelNameBox.isSelected = false; onlyIe1Box.isSelected = false }
+        }
+        // "Match model and name" requires name randomisation — keep them in sync.
+        matchModelNameBox.selectedProperty().addListener { _, _, checked ->
+            if (checked) nameRndBtn.isSelected = true
+        }
+        nameToggle.selectedToggleProperty().addListener { _, _, selected ->
+            if (selected != nameRndBtn) matchModelNameBox.isSelected = false
+        }
         statsToggle.selectedToggleProperty().addListener { _, _, selected ->
             when (selected) {
                 notChangedBtn -> variationField.isDisable = true
@@ -147,10 +166,14 @@ class RandomizerUi(private val stage: Stage) {
             .apply { alignment = Pos.CENTER_LEFT }
         val nameRow      = HBox(12.0, rowLabel("Names:"),    nameNcBtn, nameRndBtn)
             .apply { alignment = Pos.CENTER_LEFT }
+        val modelRow     = HBox(12.0, rowLabel("Model:"),    modelNcBtn, modelRndBtn)
+            .apply { alignment = Pos.CENTER_LEFT }
+        val modelSubRow  = HBox(16.0, matchModelNameBox, onlyIe1Box)
+            .apply { alignment = Pos.CENTER_LEFT; padding = Insets(0.0, 0.0, 0.0, labelWidth + 12.0) }
 
         val playerContent = VBox(10.0).apply {
             padding = Insets(16.0)
-            children.addAll(statsRow, variationRow, elementRow, genderRow, positionRow, nameRow)
+            children.addAll(statsRow, variationRow, elementRow, genderRow, positionRow, nameRow, modelRow, modelSubRow)
         }
 
         val tabPane = TabPane().apply {
@@ -219,14 +242,20 @@ class RandomizerUi(private val stage: Stage) {
         else       -> NameMode.NOT_CHANGED
     }
 
+    private fun selectedModelMode(): ModelMode = when (modelToggle.selectedToggle) {
+        modelRndBtn -> ModelMode.RANDOM_TOTALLY
+        else        -> ModelMode.NOT_CHANGED
+    }
+
     private fun generate() {
         val seed         = seedField.text.toLongOrNull() ?: System.currentTimeMillis()
         val statMode     = selectedStatMode()
         val elementMode  = selectedElementMode()
         val genderMode   = selectedGenderMode()
         val positionMode = selectedPositionMode()
-        val nameMode     = selectedNameMode()
-        val variance     = variationField.text.toIntOrNull()?.coerceIn(0, 150)?.div(100.0) ?: 0.35
+        val nameMode      = selectedNameMode()
+        val modelMode     = selectedModelMode()
+        val variance      = variationField.text.toIntOrNull()?.coerceIn(0, 150)?.div(100.0) ?: 0.35
 
         generateButton.isDisable = true
         openRomButton.isDisable  = true
@@ -242,7 +271,10 @@ class RandomizerUi(private val stage: Stage) {
                 val config = RandomizerConfig(
                     seed = seed, statMode = statMode, variance = variance,
                     elementMode = elementMode, genderMode = genderMode,
-                    positionMode = positionMode, nameMode = nameMode
+                    positionMode = positionMode, nameMode = nameMode,
+                    modelMode = modelMode,
+                    matchModelAndName  = matchModelNameBox.isSelected,
+                    onlyIe1Characters  = onlyIe1Box.isSelected
                 )
 
                 // — Stats —
@@ -266,15 +298,23 @@ class RandomizerUi(private val stage: Stage) {
                 val basePath    = resolveGameFilePath(rom, version, "unitbase.dat")
                 val baseData    = rom.getFile(basePath)
                 val players = UnitBaseParser(version).parse(baseData)
-                val randomizedPlayers = NameRandomizer(config)
-                    .randomize(PositionRandomizer(config)
-                        .randomize(ElementGenderRandomizer(config).randomize(players)))
+                val randomizedPlayers = ModelRandomizer(config, version)
+                    .randomize(NameRandomizer(config)
+                        .randomize(PositionRandomizer(config)
+                            .randomize(ElementGenderRandomizer(config).randomize(players))))
                 val newBaseData = UnitBaseSerializer(version).serialize(baseData, randomizedPlayers)
 
                 if (elementMode  != FieldMode.NOT_CHANGED)    log("Element:  $elementMode")
                 if (genderMode   != FieldMode.NOT_CHANGED)    log("Gender:   $genderMode")
                 if (positionMode != PositionMode.NOT_CHANGED) log("Position: $positionMode")
                 if (nameMode     != NameMode.NOT_CHANGED)     log("Names:    $nameMode")
+                if (modelMode    != ModelMode.NOT_CHANGED) {
+                    val flags = listOfNotNull(
+                        "match name".takeIf { matchModelNameBox.isSelected },
+                        "IE1 only".takeIf  { onlyIe1Box.isSelected }
+                    ).joinToString(", ")
+                    log("Model:    $modelMode" + if (flags.isNotEmpty()) " [$flags]" else "")
+                }
 
                 // Chain patches: unitbase on top of stat patch.
                 val patchedRom = rom.patchFile(basePath, newBaseData, rom.patchFile(statPath, newStatData))

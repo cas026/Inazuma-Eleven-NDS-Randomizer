@@ -8,5 +8,8 @@ data class RandomizerConfig(
     val elementMode: FieldMode = FieldMode.NOT_CHANGED,
     val genderMode: FieldMode = FieldMode.NOT_CHANGED,
     val positionMode: PositionMode = PositionMode.NOT_CHANGED,
-    val nameMode: NameMode = NameMode.NOT_CHANGED
+    val nameMode: NameMode = NameMode.NOT_CHANGED,
+    val modelMode: ModelMode = ModelMode.NOT_CHANGED,
+    val matchModelAndName: Boolean = false,
+    val onlyIe1Characters: Boolean = false
 )

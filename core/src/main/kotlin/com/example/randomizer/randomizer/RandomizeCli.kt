@@ -36,8 +36,12 @@ fun main(args: Array<String>) {
         ?.let { name -> FieldMode.entries.find { it.name == name } } ?: FieldMode.NOT_CHANGED
     val positionMode = args.getOrNull(7)?.uppercase()
         ?.let { name -> PositionMode.entries.find { it.name == name } } ?: PositionMode.NOT_CHANGED
-    val nameMode     = args.getOrNull(8)?.uppercase()
+    val nameMode          = args.getOrNull(8)?.uppercase()
         ?.let { name -> NameMode.entries.find { it.name == name } } ?: NameMode.NOT_CHANGED
+    val modelMode         = args.getOrNull(9)?.uppercase()
+        ?.let { name -> ModelMode.entries.find { it.name == name } } ?: ModelMode.NOT_CHANGED
+    val matchModelAndName = args.getOrNull(10)?.lowercase() == "true"
+    val onlyIe1Characters = args.getOrNull(11)?.lowercase() == "true"
 
     val rom     = NdsRom(inputPath)
     val version = GameVersion.fromGameId(rom.gameId)
@@ -46,7 +50,9 @@ fun main(args: Array<String>) {
     val config = RandomizerConfig(
         seed = seed, statMode = statMode, variance = variance,
         elementMode = elementMode, genderMode = genderMode,
-        positionMode = positionMode, nameMode = nameMode
+        positionMode = positionMode, nameMode = nameMode,
+        modelMode = modelMode, matchModelAndName = matchModelAndName,
+        onlyIe1Characters = onlyIe1Characters
     )
 
     // — Stats —
@@ -61,9 +67,10 @@ fun main(args: Array<String>) {
     val basePath    = resolveGameFilePath(rom, version, "unitbase.dat")
     val baseData    = rom.getFile(basePath)
     val players     = UnitBaseParser(version).parse(baseData)
-    val randomizedPlayers = NameRandomizer(config)
-        .randomize(PositionRandomizer(config)
-            .randomize(ElementGenderRandomizer(config).randomize(players)))
+    val randomizedPlayers = ModelRandomizer(config, version)
+        .randomize(NameRandomizer(config)
+            .randomize(PositionRandomizer(config)
+                .randomize(ElementGenderRandomizer(config).randomize(players))))
     val newBaseData = UnitBaseSerializer(version).serialize(baseData, randomizedPlayers)
 
     // Apply both patches — chain so second patch builds on top of first.
@@ -77,5 +84,8 @@ fun main(args: Array<String>) {
     println("Gender:   $genderMode")
     println("Position: $positionMode")
     println("Names:    $nameMode")
+    println("Model:    $modelMode" +
+        (if (modelMode != ModelMode.NOT_CHANGED && matchModelAndName) " [match name]" else "") +
+        (if (modelMode != ModelMode.NOT_CHANGED && onlyIe1Characters) " [IE1 only]"   else ""))
     println("Output:   $outputPath")
 }
