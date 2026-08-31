@@ -36,6 +36,8 @@ fun main(args: Array<String>) {
         ?.let { name -> FieldMode.entries.find { it.name == name } } ?: FieldMode.NOT_CHANGED
     val positionMode = args.getOrNull(7)?.uppercase()
         ?.let { name -> PositionMode.entries.find { it.name == name } } ?: PositionMode.NOT_CHANGED
+    val nameMode     = args.getOrNull(8)?.uppercase()
+        ?.let { name -> NameMode.entries.find { it.name == name } } ?: NameMode.NOT_CHANGED
 
     val rom     = NdsRom(inputPath)
     val version = GameVersion.fromGameId(rom.gameId)
@@ -44,7 +46,7 @@ fun main(args: Array<String>) {
     val config = RandomizerConfig(
         seed = seed, statMode = statMode, variance = variance,
         elementMode = elementMode, genderMode = genderMode,
-        positionMode = positionMode
+        positionMode = positionMode, nameMode = nameMode
     )
 
     // — Stats —
@@ -55,12 +57,13 @@ fun main(args: Array<String>) {
     val realCount   = stats.count { it.maxTotal > 0 }
     val newStatData = UnitStatSerializer(version).serialize(statData, StatRandomizer(config, version).randomize(stats))
 
-    // — Element / Gender / Position —
+    // — Element / Gender / Position / Names —
     val basePath    = resolveGameFilePath(rom, version, "unitbase.dat")
     val baseData    = rom.getFile(basePath)
     val players     = UnitBaseParser(version).parse(baseData)
-    val randomizedPlayers = PositionRandomizer(config)
-        .randomize(ElementGenderRandomizer(config).randomize(players))
+    val randomizedPlayers = NameRandomizer(config)
+        .randomize(PositionRandomizer(config)
+            .randomize(ElementGenderRandomizer(config).randomize(players)))
     val newBaseData = UnitBaseSerializer(version).serialize(baseData, randomizedPlayers)
 
     // Apply both patches — chain so second patch builds on top of first.
@@ -73,5 +76,6 @@ fun main(args: Array<String>) {
     println("Element:  $elementMode")
     println("Gender:   $genderMode")
     println("Position: $positionMode")
+    println("Names:    $nameMode")
     println("Output:   $outputPath")
 }

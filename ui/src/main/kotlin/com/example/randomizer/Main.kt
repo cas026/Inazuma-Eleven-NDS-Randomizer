@@ -79,6 +79,10 @@ class RandomizerUi(private val stage: Stage) {
     private val posRevBtn       = RadioButton("Reverse").apply          { toggleGroup = positionToggle }
     private val posRndBtn       = RadioButton("Random (Totally)").apply { toggleGroup = positionToggle }
 
+    private val nameToggle = ToggleGroup()
+    private val nameNcBtn  = RadioButton("Not Changed").apply      { toggleGroup = nameToggle; isSelected = true }
+    private val nameRndBtn = RadioButton("Random (Totally)").apply { toggleGroup = nameToggle }
+
     val root: VBox = buildLayout()
 
     init {
@@ -141,10 +145,12 @@ class RandomizerUi(private val stage: Stage) {
             .apply { alignment = Pos.CENTER_LEFT }
         val positionRow  = HBox(12.0, rowLabel("Position:"), posNcBtn, posRevBtn, posRndBtn)
             .apply { alignment = Pos.CENTER_LEFT }
+        val nameRow      = HBox(12.0, rowLabel("Names:"),    nameNcBtn, nameRndBtn)
+            .apply { alignment = Pos.CENTER_LEFT }
 
         val playerContent = VBox(10.0).apply {
             padding = Insets(16.0)
-            children.addAll(statsRow, variationRow, elementRow, genderRow, positionRow)
+            children.addAll(statsRow, variationRow, elementRow, genderRow, positionRow, nameRow)
         }
 
         val tabPane = TabPane().apply {
@@ -208,13 +214,19 @@ class RandomizerUi(private val stage: Stage) {
         else      -> PositionMode.NOT_CHANGED
     }
 
+    private fun selectedNameMode(): NameMode = when (nameToggle.selectedToggle) {
+        nameRndBtn -> NameMode.RANDOM_TOTALLY
+        else       -> NameMode.NOT_CHANGED
+    }
+
     private fun generate() {
-        val seed        = seedField.text.toLongOrNull() ?: System.currentTimeMillis()
+        val seed         = seedField.text.toLongOrNull() ?: System.currentTimeMillis()
         val statMode     = selectedStatMode()
         val elementMode  = selectedElementMode()
         val genderMode   = selectedGenderMode()
         val positionMode = selectedPositionMode()
-        val variance    = variationField.text.toIntOrNull()?.coerceIn(0, 150)?.div(100.0) ?: 0.35
+        val nameMode     = selectedNameMode()
+        val variance     = variationField.text.toIntOrNull()?.coerceIn(0, 150)?.div(100.0) ?: 0.35
 
         generateButton.isDisable = true
         openRomButton.isDisable  = true
@@ -230,7 +242,7 @@ class RandomizerUi(private val stage: Stage) {
                 val config = RandomizerConfig(
                     seed = seed, statMode = statMode, variance = variance,
                     elementMode = elementMode, genderMode = genderMode,
-                    positionMode = positionMode
+                    positionMode = positionMode, nameMode = nameMode
                 )
 
                 // — Stats —
@@ -250,17 +262,19 @@ class RandomizerUi(private val stage: Stage) {
                     }
                 }
 
-                // — Element / Gender —
+                // — Element / Gender / Position / Names —
                 val basePath    = resolveGameFilePath(rom, version, "unitbase.dat")
                 val baseData    = rom.getFile(basePath)
                 val players = UnitBaseParser(version).parse(baseData)
-                val randomizedPlayers = PositionRandomizer(config)
-                    .randomize(ElementGenderRandomizer(config).randomize(players))
+                val randomizedPlayers = NameRandomizer(config)
+                    .randomize(PositionRandomizer(config)
+                        .randomize(ElementGenderRandomizer(config).randomize(players)))
                 val newBaseData = UnitBaseSerializer(version).serialize(baseData, randomizedPlayers)
 
-                if (elementMode  != FieldMode.NOT_CHANGED)   log("Element:  $elementMode")
-                if (genderMode   != FieldMode.NOT_CHANGED)   log("Gender:   $genderMode")
+                if (elementMode  != FieldMode.NOT_CHANGED)    log("Element:  $elementMode")
+                if (genderMode   != FieldMode.NOT_CHANGED)    log("Gender:   $genderMode")
                 if (positionMode != PositionMode.NOT_CHANGED) log("Position: $positionMode")
+                if (nameMode     != NameMode.NOT_CHANGED)     log("Names:    $nameMode")
 
                 // Chain patches: unitbase on top of stat patch.
                 val patchedRom = rom.patchFile(basePath, newBaseData, rom.patchFile(statPath, newStatData))
