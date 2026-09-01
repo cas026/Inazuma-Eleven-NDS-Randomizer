@@ -89,6 +89,18 @@ class RandomizerUi(private val stage: Stage) {
     private val matchModelNameBox  = CheckBox("Match model and name").apply { isDisable = true }
     private val onlyIe1Box         = CheckBox("Only IE1 characters").apply  { isDisable = true }
 
+    private val moveToggle = ToggleGroup()
+    private val moveNcBtn  = RadioButton("Not Changed").apply      { toggleGroup = moveToggle; isSelected = true }
+    private val moveRndBtn = RadioButton("Random (Totally)").apply { toggleGroup = moveToggle }
+    private val samePosBox      = CheckBox("Same player position").apply  { isDisable = true }
+    private val storyProtBox    = CheckBox("Story move protection").apply { isDisable = true; isSelected = true }
+    private val rndLevelBox     = CheckBox("Random level learned").apply  { isDisable = true }
+    private val maxLevelField   = TextField("99").apply  { prefWidth = 50.0; isDisable = true }
+    private val onlyIe1MovesBox = CheckBox("Only IE1 moves").apply       { isDisable = true }
+    private val onlyIe2MovesBox = CheckBox("Only IE2 moves").apply       { isDisable = true }
+    private val limitSkillBox   = CheckBox("Limit of skill").apply       { isDisable = true }
+    private val maxLimitField   = TextField("999").apply { prefWidth = 70.0; isDisable = true; promptText = "verify!" }
+
     val root: VBox = buildLayout()
 
     init {
@@ -106,6 +118,23 @@ class RandomizerUi(private val stage: Stage) {
         }
         nameToggle.selectedToggleProperty().addListener { _, _, selected ->
             if (selected != nameRndBtn) matchModelNameBox.isSelected = false
+        }
+        moveToggle.selectedToggleProperty().addListener { _, _, selected ->
+            val random = selected == moveRndBtn
+            listOf(samePosBox, storyProtBox, rndLevelBox, maxLevelField,
+                   onlyIe1MovesBox, onlyIe2MovesBox, limitSkillBox, maxLimitField)
+                .forEach { it.isDisable = !random }
+            if (!random) {
+                samePosBox.isSelected = false; rndLevelBox.isSelected = false
+                onlyIe1MovesBox.isSelected = false; onlyIe2MovesBox.isSelected = false
+                limitSkillBox.isSelected = false; storyProtBox.isSelected = true
+            }
+        }
+        rndLevelBox.selectedProperty().addListener { _, _, checked ->
+            maxLevelField.isDisable = !checked || moveToggle.selectedToggle != moveRndBtn
+        }
+        limitSkillBox.selectedProperty().addListener { _, _, checked ->
+            maxLimitField.isDisable = !checked || moveToggle.selectedToggle != moveRndBtn
         }
         statsToggle.selectedToggleProperty().addListener { _, _, selected ->
             when (selected) {
@@ -170,10 +199,18 @@ class RandomizerUi(private val stage: Stage) {
             .apply { alignment = Pos.CENTER_LEFT }
         val modelSubRow  = HBox(16.0, matchModelNameBox, onlyIe1Box)
             .apply { alignment = Pos.CENTER_LEFT; padding = Insets(0.0, 0.0, 0.0, labelWidth + 12.0) }
+        val moveRow      = HBox(12.0, rowLabel("Moves:"),    moveNcBtn, moveRndBtn)
+            .apply { alignment = Pos.CENTER_LEFT }
+        val moveSubRow1  = HBox(16.0, samePosBox, storyProtBox, onlyIe1MovesBox, onlyIe2MovesBox)
+            .apply { alignment = Pos.CENTER_LEFT; padding = Insets(0.0, 0.0, 0.0, labelWidth + 12.0) }
+        val moveSubRow2  = HBox(8.0, rndLevelBox, Label("max:"), maxLevelField,
+                                    Label("  "), limitSkillBox, Label("max limit:"), maxLimitField)
+            .apply { alignment = Pos.CENTER_LEFT; padding = Insets(0.0, 0.0, 0.0, labelWidth + 12.0) }
 
         val playerContent = VBox(10.0).apply {
             padding = Insets(16.0)
-            children.addAll(statsRow, variationRow, elementRow, genderRow, positionRow, nameRow, modelRow, modelSubRow)
+            children.addAll(statsRow, variationRow, elementRow, genderRow, positionRow,
+                            nameRow, modelRow, modelSubRow, moveRow, moveSubRow1, moveSubRow2)
         }
 
         val tabPane = TabPane().apply {
@@ -247,6 +284,11 @@ class RandomizerUi(private val stage: Stage) {
         else        -> ModelMode.NOT_CHANGED
     }
 
+    private fun selectedMoveMode(): MoveMode = when (moveToggle.selectedToggle) {
+        moveRndBtn -> MoveMode.RANDOM_TOTALLY
+        else       -> MoveMode.NOT_CHANGED
+    }
+
     private fun generate() {
         val seed         = seedField.text.toLongOrNull() ?: System.currentTimeMillis()
         val statMode     = selectedStatMode()
@@ -255,6 +297,7 @@ class RandomizerUi(private val stage: Stage) {
         val positionMode = selectedPositionMode()
         val nameMode      = selectedNameMode()
         val modelMode     = selectedModelMode()
+        val moveMode      = selectedMoveMode()
         val variance      = variationField.text.toIntOrNull()?.coerceIn(0, 150)?.div(100.0) ?: 0.35
 
         generateButton.isDisable = true
@@ -274,14 +317,36 @@ class RandomizerUi(private val stage: Stage) {
                     positionMode = positionMode, nameMode = nameMode,
                     modelMode = modelMode,
                     matchModelAndName  = matchModelNameBox.isSelected,
-                    onlyIe1Characters  = onlyIe1Box.isSelected
+                    onlyIe1Characters  = onlyIe1Box.isSelected,
+                    moveMode           = moveMode,
+                    samePositionMove   = samePosBox.isSelected,
+                    storyMoveProtection = storyProtBox.isSelected,
+                    randomMoveLevel    = rndLevelBox.isSelected,
+                    maxMoveLevel       = maxLevelField.text.toIntOrNull()?.coerceIn(1, 99) ?: 99,
+                    limitOfSkill       = limitSkillBox.isSelected,
+                    maxMoveLimit       = maxLimitField.text.toIntOrNull() ?: Int.MAX_VALUE,
+                    onlyIe1Moves       = onlyIe1MovesBox.isSelected,
+                    onlyIe2Moves       = onlyIe2MovesBox.isSelected
                 )
 
-                // — Stats —
+                // — Stats + moves —
                 val statPath    = resolveGameFilePath(rom, version, "unitstat.dat")
                 val statData    = rom.getFile(statPath)
                 val stats       = UnitStatParser(version).parse(statData)
-                val randomized  = StatRandomizer(config, version).randomize(stats)
+                val afterStats  = StatRandomizer(config, version).randomize(stats)
+                val randomized  = if (moveMode != MoveMode.NOT_CHANGED) {
+                    val basePath2 = resolveGameFilePath(rom, version, "unitbase.dat")
+                    val players2  = UnitBaseParser(version).parse(rom.getFile(basePath2))
+                    val cmdPath   = resolveGameFilePath(rom, version, "command.dat")
+                    val calcPath  = resolveGameFilePath(rom, version, "unitcalc.dat")
+                    val strPath   = resolveGameFilePath(rom, version, "command.STR")
+                    val calcData  = if (rom.hasFile(calcPath)) rom.getFile(calcPath) else null
+                    val moveNames = if (rom.hasFile(strPath))
+                        CommandDatParser.readNames(rom.getFile(strPath), version.gameId.endsWith("J"))
+                    else emptyMap()
+                    val movePool  = CommandDatParser(version.commandRecordSize).parse(rom.getFile(cmdPath), calcData, moveNames)
+                    MoveRandomizer(config, version).randomize(afterStats, players2, movePool)
+                } else afterStats
                 val newStatData = UnitStatSerializer(version).serialize(statData, randomized)
 
                 when (statMode) {
@@ -314,6 +379,17 @@ class RandomizerUi(private val stage: Stage) {
                         "IE1 only".takeIf  { onlyIe1Box.isSelected }
                     ).joinToString(", ")
                     log("Model:    $modelMode" + if (flags.isNotEmpty()) " [$flags]" else "")
+                }
+                if (moveMode != MoveMode.NOT_CHANGED) {
+                    val flags = listOfNotNull(
+                        "same position".takeIf { samePosBox.isSelected },
+                        "story protected".takeIf { storyProtBox.isSelected },
+                        "random level (max ${maxLevelField.text})".takeIf { rndLevelBox.isSelected },
+                        "limit ≤ ${maxLimitField.text}".takeIf { limitSkillBox.isSelected },
+                        "IE1 moves only".takeIf { onlyIe1MovesBox.isSelected && !onlyIe2MovesBox.isSelected },
+                        "IE2 moves only".takeIf { onlyIe2MovesBox.isSelected && !onlyIe1MovesBox.isSelected }
+                    ).joinToString(", ")
+                    log("Moves:    $moveMode" + if (flags.isNotEmpty()) " [$flags]" else "")
                 }
 
                 // Chain patches: unitbase on top of stat patch.

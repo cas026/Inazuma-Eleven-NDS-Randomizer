@@ -5,7 +5,10 @@ import com.example.randomizer.rom.NdsRom
 import kotlin.io.path.Path
 
 fun main(args: Array<String>) {
-    require(args.isNotEmpty()) { "Usage: ./gradlew :core:dumpStats --args=\"/pad/naar/rom.nds\"" }
+    require(args.isNotEmpty()) {
+        "Usage: ./gradlew :core:dumpStats --args=\"/pad/naar/rom.nds [van] [tm]\"\n" +
+        "  [van] en [tm] zijn optionele 0-gebaseerde indices (bijv. 1260 1270)"
+    }
 
     val rom     = NdsRom(Path(args[0]))
     val version = GameVersion.fromGameId(rom.gameId)
@@ -21,11 +24,22 @@ fun main(args: Array<String>) {
     val bases = UnitBaseParser(version).parse(baseData)
     val stats = UnitStatParser(version).parse(statData)
 
-    val players = (0 until minOf(bases.size, stats.size))
+    val allPlayers = (0 until minOf(bases.size, stats.size))
         .filter { stats[it].maxTotal > 0 }
 
-    println("Spelers gevonden: ${players.size}\n")
-    players.forEach { i -> printPlayer(i + 1, bases[i], stats[i]) }
+    println("Spelers gevonden: ${allPlayers.size}\n")
+
+    val from = args.getOrNull(1)?.toIntOrNull()
+    val to   = args.getOrNull(2)?.toIntOrNull()
+
+    val toShow = if (from != null) {
+        val end = (to ?: (from + 10)).coerceAtMost(minOf(bases.size, stats.size) - 1)
+        (from..end).filter { stats[it].maxTotal > 0 }
+    } else {
+        allPlayers
+    }
+
+    toShow.forEach { i -> printPlayer(i, bases[i], stats[i]) }
 }
 
 private fun loadFile(rom: NdsRom, version: GameVersion, filename: String): ByteArray =
@@ -33,7 +47,7 @@ private fun loadFile(rom: NdsRom, version: GameVersion, filename: String): ByteA
 
 private fun printPlayer(index: Int, base: UnitBase, stat: UnitStat) {
     val w = { n: Int, width: Int -> n.toString().padStart(width) }
-    println("=== #$index ${base.fullName} (${base.nickname}) ===")
+    println("=== [idx $index] ${base.fullName} (${base.nickname}) ===")
     println("  ${base.element?.label ?: "?"}  ${base.gender?.label ?: "?"}  size=${base.size}  pos=${base.position}")
     println("  FP      ${w(stat.fp.min,4)} – ${w(stat.fp.max,4)}  growth ${w(stat.fp.growthRate,5)}")
     println("  TP      ${w(stat.tp.min,4)} – ${w(stat.tp.max,4)}  growth ${w(stat.tp.growthRate,5)}")

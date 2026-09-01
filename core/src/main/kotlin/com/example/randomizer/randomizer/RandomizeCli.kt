@@ -1,5 +1,6 @@
 package com.example.randomizer.randomizer
 
+import com.example.randomizer.data.CommandDatParser
 import com.example.randomizer.data.GameVersion
 import com.example.randomizer.data.UnitBaseParser
 import com.example.randomizer.data.UnitBaseSerializer
@@ -13,13 +14,11 @@ import kotlin.io.path.writeBytes
 fun main(args: Array<String>) {
     if (args.size < 2) {
         System.err.println(
-            "Usage: ./gradlew :core:randomize --args=\"<input.nds> <output.nds> [seed] [variance] [statMode] [elementMode] [genderMode] [positionMode]\"\n" +
-            "  seed         — integer, omit for a random seed\n" +
-            "  variance     — decimal 0.0–1.5, default 0.35 (±35%)\n" +
-            "  statMode     — NOT_CHANGED | SHUFFLE | RANDOM_TOTALLY  (default: RANDOM_TOTALLY)\n" +
-            "  elementMode  — NOT_CHANGED | REVERSE | RANDOM_TOTALLY  (default: NOT_CHANGED)\n" +
-            "  genderMode   — NOT_CHANGED | REVERSE | RANDOM_TOTALLY  (default: NOT_CHANGED)\n" +
-            "  positionMode — NOT_CHANGED | SHUFFLE | RANDOM_TOTALLY  (default: NOT_CHANGED)"
+            "Usage: ./gradlew :core:randomize --args=\"<input.nds> <output.nds> [seed] [variance] " +
+            "[statMode] [elementMode] [genderMode] [positionMode] [nameMode] [modelMode] " +
+            "[matchModelAndName] [onlyIe1Characters] [moveMode] [samePositionMove] " +
+            "[storyMoveProtection] [randomMoveLevel] [maxMoveLevel] [limitOfSkill] " +
+            "[maxMoveLimit] [onlyIe1Moves] [onlyIe2Moves]\""
         )
         return
     }
@@ -36,12 +35,22 @@ fun main(args: Array<String>) {
         ?.let { name -> FieldMode.entries.find { it.name == name } } ?: FieldMode.NOT_CHANGED
     val positionMode = args.getOrNull(7)?.uppercase()
         ?.let { name -> PositionMode.entries.find { it.name == name } } ?: PositionMode.NOT_CHANGED
-    val nameMode          = args.getOrNull(8)?.uppercase()
+    val nameMode           = args.getOrNull(8)?.uppercase()
         ?.let { name -> NameMode.entries.find { it.name == name } } ?: NameMode.NOT_CHANGED
-    val modelMode         = args.getOrNull(9)?.uppercase()
+    val modelMode          = args.getOrNull(9)?.uppercase()
         ?.let { name -> ModelMode.entries.find { it.name == name } } ?: ModelMode.NOT_CHANGED
-    val matchModelAndName = args.getOrNull(10)?.lowercase() == "true"
-    val onlyIe1Characters = args.getOrNull(11)?.lowercase() == "true"
+    val matchModelAndName  = args.getOrNull(10)?.lowercase() == "true"
+    val onlyIe1Characters  = args.getOrNull(11)?.lowercase() == "true"
+    val moveMode           = args.getOrNull(12)?.uppercase()
+        ?.let { name -> MoveMode.entries.find { it.name == name } } ?: MoveMode.NOT_CHANGED
+    val samePositionMove   = args.getOrNull(13)?.lowercase() == "true"
+    val storyMoveProtection = args.getOrNull(14)?.lowercase() != "false"  // default true
+    val randomMoveLevel    = args.getOrNull(15)?.lowercase() == "true"
+    val maxMoveLevel       = args.getOrNull(16)?.toIntOrNull() ?: 99
+    val limitOfSkill       = args.getOrNull(17)?.lowercase() == "true"
+    val maxMoveLimit       = args.getOrNull(18)?.toIntOrNull() ?: Int.MAX_VALUE
+    val onlyIe1Moves       = args.getOrNull(19)?.lowercase() == "true"
+    val onlyIe2Moves       = args.getOrNull(20)?.lowercase() == "true"
 
     val rom     = NdsRom(inputPath)
     val version = GameVersion.fromGameId(rom.gameId)
@@ -52,18 +61,36 @@ fun main(args: Array<String>) {
         elementMode = elementMode, genderMode = genderMode,
         positionMode = positionMode, nameMode = nameMode,
         modelMode = modelMode, matchModelAndName = matchModelAndName,
-        onlyIe1Characters = onlyIe1Characters
+        onlyIe1Characters = onlyIe1Characters,
+        moveMode = moveMode, samePositionMove = samePositionMove,
+        storyMoveProtection = storyMoveProtection, randomMoveLevel = randomMoveLevel,
+        maxMoveLevel = maxMoveLevel, limitOfSkill = limitOfSkill,
+        maxMoveLimit = maxMoveLimit, onlyIe1Moves = onlyIe1Moves, onlyIe2Moves = onlyIe2Moves
     )
 
-    // — Stats —
+    // — Stats + moves —
     val statPath    = resolveGameFilePath(rom, version, "unitstat.dat")
     val statData    = rom.getFile(statPath)
     val stats       = UnitStatParser(version).parse(statData)
     val storyCount  = StoryPlayers.byVersion[version]?.size ?: 0
     val realCount   = stats.count { it.maxTotal > 0 }
-    val newStatData = UnitStatSerializer(version).serialize(statData, StatRandomizer(config, version).randomize(stats))
 
-    // — Element / Gender / Position / Names —
+    val randomizedStats = if (moveMode != MoveMode.NOT_CHANGED) {
+        val basePath2   = resolveGameFilePath(rom, version, "unitbase.dat")
+        val players2    = UnitBaseParser(version).parse(rom.getFile(basePath2))
+        val cmdPath     = resolveGameFilePath(rom, version, "command.dat")
+        val calcPath    = resolveGameFilePath(rom, version, "unitcalc.dat")
+        val calcData    = if (rom.hasFile(calcPath)) rom.getFile(calcPath) else null
+        val movePool    = CommandDatParser(version.commandRecordSize).parse(rom.getFile(cmdPath), calcData)
+        MoveRandomizer(config, version).randomize(
+            StatRandomizer(config, version).randomize(stats), players2, movePool
+        )
+    } else {
+        StatRandomizer(config, version).randomize(stats)
+    }
+    val newStatData = UnitStatSerializer(version).serialize(statData, randomizedStats)
+
+    // — Element / Gender / Position / Names / Model —
     val basePath    = resolveGameFilePath(rom, version, "unitbase.dat")
     val baseData    = rom.getFile(basePath)
     val players     = UnitBaseParser(version).parse(baseData)
@@ -73,7 +100,6 @@ fun main(args: Array<String>) {
                 .randomize(ElementGenderRandomizer(config).randomize(players))))
     val newBaseData = UnitBaseSerializer(version).serialize(baseData, randomizedPlayers)
 
-    // Apply both patches — chain so second patch builds on top of first.
     val patchedRom = rom.patchFile(basePath, newBaseData, rom.patchFile(statPath, newStatData))
     outputPath.writeBytes(patchedRom)
 
@@ -87,5 +113,16 @@ fun main(args: Array<String>) {
     println("Model:    $modelMode" +
         (if (modelMode != ModelMode.NOT_CHANGED && matchModelAndName) " [match name]" else "") +
         (if (modelMode != ModelMode.NOT_CHANGED && onlyIe1Characters) " [IE1 only]"   else ""))
+    if (moveMode != MoveMode.NOT_CHANGED) {
+        val flags = listOfNotNull(
+            "same position".takeIf { samePositionMove },
+            "story protected".takeIf { storyMoveProtection },
+            "random level (max $maxMoveLevel)".takeIf { randomMoveLevel },
+            "limit ≤ $maxMoveLimit".takeIf { limitOfSkill },
+            "IE1 moves only".takeIf { onlyIe1Moves && !onlyIe2Moves },
+            "IE2 moves only".takeIf { onlyIe2Moves && !onlyIe1Moves }
+        ).joinToString(", ")
+        println("Moves:    $moveMode" + if (flags.isNotEmpty()) " [$flags]" else "")
+    }
     println("Output:   $outputPath")
 }
